@@ -1,0 +1,1487 @@
+# ESP32 Desk Robot - Comprehensive Pseudo Code & State Machine Flow
+ 
+## Table of Contents
+1. [Program Structure](#program-structure)
+2. [State Machine Detailed Flow](#state-machine-detailed-flow)
+3. [Main Loop Logic](#main-loop-logic)
+4. [Sensor Fusion System](#sensor-fusion-system)
+5. [Behavior Patterns](#behavior-patterns)
+6. [WiFi Setup Flow](#wifi-setup-flow)
+7. [Deep Sleep Logic](#deep-sleep-logic)
+---
+ 
+## 1. PROGRAM STRUCTURE
+ 
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        GLOBAL VARIABLES                          │
+├─────────────────────────────────────────────────────────────────┤
+│ • Current Emotion State (HAPPY, EXCITED, CURIOUS, etc.)        │
+│ • Previous Emotion State                                        │
+│ • Energy Level (0-100)                                          │
+│ • Last Interaction Time                                         │
+│ • State Transition Cooldown Timer                               │
+│ • WiFi Status (CONNECTED, DISCONNECTED, AP_MODE)               │
+│ • Sensor Objects (LDR, Touch, Accel, Mic)                      │
+│ • Output Objects (Display, Buzzer)                             │
+│ • Behavior Flags (isAttentionSeeking, isInPlayMode, etc.)     │
+└─────────────────────────────────────────────────────────────────┘
+ 
+PSEUDO CODE:
+ 
+SETUP() {
+    // ═══════════════════════════════════════════════════════════
+    // INITIALIZATION SEQUENCE
+    // ═══════════════════════════════════════════════════════════
+    
+    1. Initialize Serial Communication (115200 baud)
+       Print "🤖 Robot Starting..."
+    
+    2. Initialize All Sensors
+       ┌─────────────────────────────────────┐
+       │ LDR.begin()                         │
+       │ TouchSensor.begin()                 │
+       │ AccelSensor.begin()                 │
+       │   └─ If failed: Log error           │
+       │ MicSensor.begin()                   │
+       └─────────────────────────────────────┘
+    
+    3. Initialize Outputs
+       ┌─────────────────────────────────────┐
+       │ Display.begin()                     │
+       │   └─ Show startup animation         │
+       │ Buzzer.begin()                      │
+       │   └─ Play startup sound             │
+       └─────────────────────────────────────┘
+    
+    4. Load Saved Settings from Preferences
+       ┌─────────────────────────────────────┐
+       │ Load WiFi credentials (if saved)    │
+       │ Load personality settings           │
+       │ Load last known state               │
+       └─────────────────────────────────────┘
+    
+    5. Initialize WiFi Manager
+       ┌─────────────────────────────────────┐
+       │ IF WiFi credentials exist:          │
+       │   ├─ Attempt connection (15s timeout)│
+       │   └─ IF connected:                   │
+       │       └─ Sync time from NTP          │
+       │ ELSE:                                │
+       │   └─ Continue without WiFi           │
+       └─────────────────────────────────────┘
+    
+    6. Set Initial State
+       ┌─────────────────────────────────────┐
+       │ currentEmotion = HAPPY              │
+       │ energyLevel = 100                   │
+       │ lastInteractionTime = now()         │
+       │ Display.setEmotion(HAPPY)           │
+       │ Buzzer.startupSound()               │
+       └─────────────────────────────────────┘
+    
+    7. Display Ready Message
+       Print "✓ Robot Ready!"
+       Show happy eyes on display
+}
+ 
+LOOP() {
+    // ═══════════════════════════════════════════════════════════
+    // MAIN EXECUTION LOOP (Non-Blocking)
+    // ═══════════════════════════════════════════════════════════
+    
+    1. UPDATE ALL SENSORS (every 50ms)
+       ┌─────────────────────────────────────────────────┐
+       │ IF sensorUpdateTimer.isReady():                 │
+       │   ├─ LDR.update()                               │
+       │   ├─ TouchSensor.update()                       │
+       │   ├─ AccelSensor.update()                       │
+       │   │   └─ Pass movement state to TouchSensor     │
+       │   │       (for hold vs intentional touch)       │
+       │   └─ MicSensor.update()                         │
+       └─────────────────────────────────────────────────┘
+    
+    2. CHECK FOR PRIORITY EVENTS (Immediate Response)
+       ┌─────────────────────────────────────────────────┐
+       │ // These override normal behavior                │
+       │ IF AccelSensor.isDropping():                     │
+       │   └─ EMERGENCY_RESPONSE("DROPPED")              │
+       │                                                   │
+       │ IF MicSensor.isSuddenLoud():                     │
+       │   └─ EMERGENCY_RESPONSE("STARTLED")             │
+       │                                                   │
+       │ IF AccelSensor.isUpsideDown() for > 3s:         │
+       │   └─ EMERGENCY_RESPONSE("HELP")                 │
+       │                                                   │
+       │ IF TouchPattern == WIFI_SETUP:                   │
+       │   └─ WIFI_SETUP_SEQUENCE()                      │
+       └─────────────────────────────────────────────────┘
+    
+    3. PROCESS SENSOR FUSION (every 100ms)
+       ┌─────────────────────────────────────────────────┐
+       │ IF behaviorTimer.isReady():                     │
+       │   └─ contextData = ANALYZE_CONTEXT()            │
+       │       ├─ Combine all sensor data                │
+       │       ├─ Detect interaction patterns            │
+       │       ├─ Calculate situation score              │
+       │       └─ Return context structure               │
+       └─────────────────────────────────────────────────┘
+    
+    4. UPDATE EMOTION STATE MACHINE
+       ┌─────────────────────────────────────────────────┐
+       │ newEmotion = EVALUATE_EMOTION(contextData)      │
+       │                                                   │
+       │ IF newEmotion != currentEmotion:                 │
+       │   IF stateTransitionCooldown.expired():          │
+       │     ├─ previousEmotion = currentEmotion         │
+       │     ├─ currentEmotion = newEmotion              │
+       │     ├─ ON_STATE_CHANGE()                        │
+       │     └─ stateTransitionCooldown.reset()          │
+       └─────────────────────────────────────────────────┘
+    
+    5. EXECUTE CURRENT STATE BEHAVIOR
+       ┌─────────────────────────────────────────────────┐
+       │ EXECUTE_STATE_BEHAVIOR(currentEmotion)          │
+       │   ├─ Update display animation                   │
+       │   ├─ Play appropriate sounds                    │
+       │   └─ Handle state-specific interactions         │
+       └─────────────────────────────────────────────────┘
+    
+    6. UPDATE AUTONOMOUS BEHAVIORS
+       ┌─────────────────────────────────────────────────┐
+       │ UPDATE_ENERGY_SYSTEM()                          │
+       │ CHECK_ATTENTION_SEEKING()                       │
+       │ CHECK_SLEEP_CONDITIONS()                        │
+       │ UPDATE_MEMORY_SYSTEM()                          │
+       └─────────────────────────────────────────────────┘
+    
+    7. UPDATE OUTPUTS
+       ┌─────────────────────────────────────────────────┐
+       │ IF displayTimer.isReady():                      │
+       │   ├─ IF WiFi.connected AND idle > 2min:         │
+       │   │   └─ Display.showClock()                    │
+       │   └─ ELSE:                                       │
+       │       └─ Display.update()  // Show eyes         │
+       │                                                   │
+       │ Buzzer.update()  // Continue playing melody     │
+       └─────────────────────────────────────────────────┘
+    
+    8. WIFI TASKS (if enabled)
+       ┌─────────────────────────────────────────────────┐
+       │ WiFiManager.update()                            │
+       │   ├─ Handle AP mode requests                    │
+       │   ├─ Process web server                         │
+       │   └─ Attempt reconnection if disconnected       │
+       └─────────────────────────────────────────────────┘
+    
+    9. DEEP SLEEP CHECK
+       ┌─────────────────────────────────────────────────┐
+       │ IF shouldEnterDeepSleep():                      │
+       │   └─ ENTER_DEEP_SLEEP()                         │
+       └─────────────────────────────────────────────────┘
+    
+    10. Small delay for stability
+        delay(1)  // Prevent watchdog timeout
+}
+```
+ 
+---
+ 
+## 2. STATE MACHINE DETAILED FLOW
+ 
+```
+╔═══════════════════════════════════════════════════════════════╗
+║                   EMOTION STATE MACHINE                        ║
+║          (8 States with Priority-Based Transitions)            ║
+╚═══════════════════════════════════════════════════════════════╝
+ 
+┌─────────────────────────────────────────────────────────────────┐
+│                      STATE DEFINITIONS                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│ 1. HAPPY (Default State)                                        │
+│    ├─ Eye Expression: Normal, regular blinking                  │
+│    ├─ Sound: Cheerful chirps                                    │
+│    ├─ Behavior: Responsive, friendly                            │
+│    └─ Entry: From any state after positive interaction          │
+│                                                                  │
+│ 2. EXCITED                                                       │
+│    ├─ Eye Expression: Wide, rapid movement                      │
+│    ├─ Sound: Quick happy beeps                                  │
+│    ├─ Behavior: Very responsive, playful                        │
+│    └─ Entry: Multiple rapid interactions, play detected         │
+│                                                                  │
+│ 3. CURIOUS                                                       │
+│    ├─ Eye Expression: Attentive, pupils tracking                │
+│    ├─ Sound: Questioning tones                                  │
+│    ├─ Behavior: Observing, reactive to stimuli                  │
+│    └─ Entry: New sound/voice, light changes, gentle movement    │
+│                                                                  │
+│ 4. BORED                                                         │
+│    ├─ Eye Expression: Half-closed, slow drift                   │
+│    ├─ Sound: Occasional sighs, attention-seeking beeps          │
+│    ├─ Behavior: Seeking attention, less responsive              │
+│    └─ Entry: No interaction for 3+ minutes                      │
+│                                                                  │
+│ 5. SLEEPY                                                        │
+│    ├─ Eye Expression: Drooping, frequent yawning                │
+│    ├─ Sound: Slow, soft tones, yawns                            │
+│    ├─ Behavior: Low energy, minimal response                    │
+│    └─ Entry: Low energy, dark environment, no interaction       │
+│                                                                  │
+│ 6. SCARED                                                        │
+│    ├─ Eye Expression: Wide open, alert                          │
+│    ├─ Sound: Alarm beeps, worried tones                         │
+│    ├─ Behavior: Tense, needs comfort                            │
+│    └─ Entry: Sudden loud noise, sudden darkness, dropped        │
+│                                                                  │
+│ 7. DIZZY                                                         │
+│    ├─ Eye Expression: Swirling, unfocused                       │
+│    ├─ Sound: Wobbly warbling                                    │
+│    ├─ Behavior: Disoriented, needs stabilization                │
+│    └─ Entry: Excessive shaking, rapid spinning                  │
+│                                                                  │
+│ 8. ANNOYED                                                       │
+│    ├─ Eye Expression: Narrowed, grumpy                          │
+│    ├─ Sound: Low grumbles                                       │
+│    ├─ Behavior: Less responsive, needs space                    │
+│    └─ Entry: Excessive noise, too much touching                 │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
+ 
+FUNCTION EVALUATE_EMOTION(contextData) {
+    // ═══════════════════════════════════════════════════════════
+    // PRIORITY LEVELS FOR STATE TRANSITIONS
+    // ═══════════════════════════════════════════════════════════
+    
+    PRIORITY 1: Emergency States (Override everything)
+    ┌─────────────────────────────────────────────────────────────┐
+    │ IF contextData.isDropped:                                   │
+    │   └─ RETURN SCARED                                          │
+    │                                                              │
+    │ IF contextData.suddenLoudNoise:                             │
+    │   └─ RETURN SCARED                                          │
+    │                                                              │
+    │ IF contextData.upsideDownDuration > 3000ms:                 │
+    │   └─ RETURN SCARED                                          │
+    │                                                              │
+    │ IF contextData.shakeIntensity > HIGH:                       │
+    │   └─ RETURN DIZZY                                           │
+    └─────────────────────────────────────────────────────────────┘
+    
+    PRIORITY 2: Special Interaction States
+    ┌─────────────────────────────────────────────────────────────┐
+    │ IF contextData.playModeDetected:                            │
+    │   // Rapid touches + movement + sounds                      │
+    │   └─ RETURN EXCITED                                         │
+    │                                                              │
+    │ IF contextData.allSensorsHeld AND currentState == SCARED:   │
+    │   // Comfort after scare                                    │
+    │   └─ RETURN HAPPY                                           │
+    │                                                              │
+    │ IF contextData.excessiveNoise OR contextData.excessiveTouch:│
+    │   └─ RETURN ANNOYED                                         │
+    └─────────────────────────────────────────────────────────────┘
+    
+    PRIORITY 3: Environmental States
+    ┌─────────────────────────────────────────────────────────────┐
+    │ IF contextData.voiceDetected:                               │
+    │   └─ RETURN CURIOUS                                         │
+    │                                                              │
+    │ IF contextData.musicDetected:                               │
+    │   └─ RETURN HAPPY or EXCITED (based on current)            │
+    │                                                              │
+    │ IF contextData.lightJustChangedSignificantly:               │
+    │   └─ RETURN CURIOUS                                         │
+    └─────────────────────────────────────────────────────────────┘
+    
+    PRIORITY 4: Time-Based States
+    ┌─────────────────────────────────────────────────────────────┐
+    │ IF contextData.timeSinceInteraction > 10 minutes:           │
+    │   IF energyLevel < 30:                                      │
+    │     └─ RETURN SLEEPY                                        │
+    │   ELSE:                                                      │
+    │     └─ Keep current state                                   │
+    │                                                              │
+    │ IF contextData.timeSinceInteraction > 3 minutes:            │
+    │   └─ RETURN BORED                                           │
+    │                                                              │
+    │ IF currentState == BORED:                                   │
+    │   IF energyLevel < 50:                                      │
+    │     └─ TRANSITION TO SLEEPY                                 │
+    └─────────────────────────────────────────────────────────────┘
+    
+    PRIORITY 5: Comfort/Return to Normal
+    ┌─────────────────────────────────────────────────────────────┐
+    │ IF currentState == SCARED:                                  │
+    │   IF contextData.headPetDetected OR contextData.isQuiet:    │
+    │     └─ RETURN HAPPY                                         │
+    │                                                              │
+    │ IF currentState == DIZZY:                                   │
+    │   IF contextData.stillDuration > 3000ms:                    │
+    │     └─ RETURN HAPPY                                         │
+    │                                                              │
+    │ IF currentState == ANNOYED:                                 │
+    │   IF contextData.timeSinceAnnoyance > 5000ms:               │
+    │     └─ RETURN HAPPY                                         │
+    └─────────────────────────────────────────────────────────────┘
+    
+    PRIORITY 6: Default (Stay in current state)
+    ┌─────────────────────────────────────────────────────────────┐
+    │ RETURN currentEmotion                                       │
+    └─────────────────────────────────────────────────────────────┘
+}
+ 
+STATE TRANSITION DIAGRAM:
+═══════════════════════════════════════════════════════════════
+ 
+                    ┌─────────────┐
+                    │   HAPPY     │◄────────────┐
+                    │  (Default)  │             │
+                    └──────┬──────┘             │
+                           │                    │
+        ┌──────────────────┼──────────────────┐ │
+        │                  │                  │ │
+        ▼                  ▼                  ▼ │
+   ┌─────────┐       ┌─────────┐       ┌─────────┐
+   │ EXCITED │       │ CURIOUS │       │  BORED  │
+   └────┬────┘       └────┬────┘       └────┬────┘
+        │                 │                  │
+        │                 │                  ▼
+        │                 │            ┌─────────┐
+        │                 │            │ SLEEPY  │
+        │                 │            └─────────┘
+        │                 │
+        └────────┬────────┴──────┐
+                 │               │
+           ┌─────▼────┐    ┌─────▼────┐
+           │  SCARED  │    │  DIZZY   │
+           └──────────┘    └──────────┘
+                 │               │
+           ┌─────▼────┐          │
+           │ ANNOYED  │◄─────────┘
+           └──────────┘
+ 
+Transition Conditions (Detailed):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+ 
+HAPPY → EXCITED:
+  • Multiple rapid touches within 2 seconds
+  • Play mode detected (movement + touches)
+  • Triple clap detected (future feature)
+  • Music detected while already happy
+ 
+HAPPY → CURIOUS:
+  • Voice/speech detected
+  • Light level changed significantly (>30%)
+  • New sound in quiet environment
+  • Gentle tilt detected
+ 
+HAPPY → BORED:
+  • No interaction for 3+ minutes
+  • All sensors showing no activity
+  • Not in dark (still expects interaction)
+ 
+HAPPY → SCARED:
+  • Sudden loud noise (>3000 level)
+  • Dropped (free fall detected)
+  • Sudden darkness while active
+  • Upside down for >3 seconds
+ 
+EXCITED → HAPPY:
+  • Interaction calms down
+  • After 30 seconds of excited state
+  • No new stimulation
+ 
+CURIOUS → HAPPY:
+  • After investigating stimulus
+  • Sound/voice ends
+  • Normal conditions resume
+ 
+CURIOUS → BORED:
+  • Stimulus disappears
+  • No follow-up interaction
+ 
+BORED → SLEEPY:
+  • Energy level < 50
+  • Still bored after 5+ minutes
+  • Dark environment
+ 
+BORED → HAPPY:
+  • Any touch detected
+  • New interaction
+ 
+BORED → CURIOUS:
+  • New sound/voice detected
+  • Light change
+ 
+SLEEPY → HAPPY:
+  • Picked up gently
+  • Light turns on
+  • Head pet detected
+  • Energy restored via rest
+ 
+SCARED → HAPPY:
+  • Head pet while scared
+  • All three sensors held (comfort)
+  • Quiet environment returns
+  • Gentle rocking after scare
+ 
+SCARED → DIZZY:
+  • Shaken while scared
+ 
+DIZZY → HAPPY:
+  • Still for 3+ seconds
+  • Placed down gently
+ 
+DIZZY → SCARED:
+  • Additional harsh movement
+ 
+ANNOYED → HAPPY:
+  • 5 seconds of no annoying stimulus
+  • Gentle interaction
+ 
+ANY → SCARED:
+  • Drop detected (highest priority)
+  • Very loud sudden noise
+  • Upside down distress
+ 
+ANY → DIZZY:
+  • Excessive shaking detected
+```
+ 
+---
+ 
+## 3. MAIN LOOP LOGIC
+ 
+```
+FUNCTION ANALYZE_CONTEXT() → ContextData {
+    // ═══════════════════════════════════════════════════════════
+    // SENSOR FUSION - Combine all inputs into context
+    // ═══════════════════════════════════════════════════════════
+    
+    CREATE contextData structure
+    
+    // ──────────────────────────────────────────────────────────
+    // LIGHT SENSOR ANALYSIS
+    // ──────────────────────────────────────────────────────────
+    contextData.lightLevel = LDR.getLevel()
+    contextData.isDark = LDR.isCurrentlyDark()
+    contextData.isBright = LDR.isBright()
+    contextData.lightJustChanged = LDR.hasSuddenChange()
+    contextData.wentDarkSuddenly = LDR.justWentDark() AND 
+                                    LDR.hasSuddenChange()
+    
+    // ──────────────────────────────────────────────────────────
+    // TOUCH SENSOR ANALYSIS
+    // ──────────────────────────────────────────────────────────
+    headTouch = TouchSensor.getData(TOUCH_HEAD)
+    bodyTouch = TouchSensor.getData(TOUCH_BODY)
+    backTouch = TouchSensor.getData(TOUCH_BACK)
+    
+    contextData.anyTouched = headTouch.isTouched OR 
+                              bodyTouch.isTouched OR 
+                              backTouch.isTouched
+    
+    contextData.allTouched = headTouch.isTouched AND 
+                              bodyTouch.isTouched AND 
+                              backTouch.isTouched
+    
+    // Detect specific patterns
+    contextData.headPetDetected = headTouch.isHolding AND 
+                                   NOT AccelSensor.isMoving()
+    
+    contextData.hugDetected = headTouch.isHolding AND 
+                               bodyTouch.isHolding
+    
+    contextData.tickleDetected = backTouch.isTouched AND 
+                                  backTouch.tapCount >= 3
+    
+    // Count recent touches for play mode detection
+    recentTouchCount = COUNT_RECENT_TOUCHES(last 2 seconds)
+    contextData.playModeDetected = recentTouchCount >= 5 AND 
+                                    AccelSensor.isMoving()
+    
+    // Excessive touching
+    contextData.excessiveTouch = COUNT_TOUCHES(last 10 seconds) > 20
+    
+    // Special pattern detection
+    pattern = TouchSensor.detectPattern()
+    contextData.wifiSetupRequested = (pattern == PATTERN_WIFI_SETUP)
+    
+    // ──────────────────────────────────────────────────────────
+    // ACCELEROMETER ANALYSIS
+    // ──────────────────────────────────────────────────────────
+    motionType = AccelSensor.getMotionType()
+    
+    contextData.isStill = (motionType == MOTION_STILL)
+    contextData.isMoving = (motionType == MOTION_MOVING)
+    contextData.isBeingPickedUp = (motionType == MOTION_PICKED_UP)
+    contextData.isBeingShaken = (motionType == MOTION_SHAKING)
+    contextData.isDropped = (motionType == MOTION_DROPPED)
+    contextData.isTilted = (motionType == MOTION_TILTED)
+    
+    contextData.upsideDown = AccelSensor.isCurrentlyUpsideDown()
+    IF contextData.upsideDown:
+        IF NOT wasUpsideDown:
+            upsideDownStartTime = now()
+        contextData.upsideDownDuration = now() - upsideDownStartTime
+    ELSE:
+        upsideDownStartTime = 0
+        contextData.upsideDownDuration = 0
+    
+    contextData.stillDuration = AccelSensor.getTimeSinceMovement()
+    contextData.gentleRocking = DETECT_GENTLE_ROCKING()
+    
+    // ──────────────────────────────────────────────────────────
+    // MICROPHONE ANALYSIS
+    // ──────────────────────────────────────────────────────────
+    soundType = MicSensor.getSoundType()
+    
+    contextData.soundLevel = MicSensor.getLevel()
+    contextData.isQuiet = MicSensor.isQuiet()
+    contextData.isLoud = MicSensor.isLoud()
+    contextData.suddenLoudNoise = MicSensor.isSuddenLoud()
+    
+    contextData.voiceDetected = (soundType == SOUND_VOICE)
+    contextData.musicDetected = (soundType == SOUND_MUSIC)
+    contextData.machineNoiseDetected = (soundType == SOUND_MACHINE)
+    
+    contextData.voiceConfidence = MicSensor.getVoiceConfidence()
+    contextData.musicConfidence = MicSensor.getMusicConfidence()
+    
+    // Continuous noise annoyance
+    IF contextData.isLoud:
+        IF NOT wasLoud:
+            loudNoiseStartTime = now()
+        loudNoiseDuration = now() - loudNoiseStartTime
+        contextData.excessiveNoise = loudNoiseDuration > 10000  // 10s
+    ELSE:
+        loudNoiseStartTime = 0
+        contextData.excessiveNoise = FALSE
+    
+    // ──────────────────────────────────────────────────────────
+    // TIMING ANALYSIS
+    // ──────────────────────────────────────────────────────────
+    IF contextData.anyTouched OR contextData.isMoving OR NOT contextData.isQuiet:
+        lastInteractionTime = now()
+    
+    contextData.timeSinceInteraction = now() - lastInteractionTime
+    contextData.isIdle = contextData.timeSinceInteraction > IDLE_TIMEOUT
+    
+    // ──────────────────────────────────────────────────────────
+    // COMBINED SITUATION DETECTION
+    // ──────────────────────────────────────────────────────────
+    
+    // Good Morning: Dark→Bright + Picked Up
+    contextData.goodMorningDetected = LDR.justWentBright() AND 
+                                       contextData.isBeingPickedUp
+    
+    // Bedtime: Dark + Quiet + Gentle Rocking
+    contextData.bedtimeDetected = contextData.isDark AND 
+                                   contextData.isQuiet AND 
+                                   contextData.gentleRocking
+    
+    // Comfort after scare: All held after scared state
+    contextData.comfortDetected = contextData.allTouched AND 
+                                   (currentEmotion == SCARED)
+    
+    // Attention seeking trigger
+    contextData.shouldSeekAttention = contextData.timeSinceInteraction > 180000 AND
+                                       NOT contextData.isDark
+    
+    RETURN contextData
+}
+ 
+FUNCTION EXECUTE_STATE_BEHAVIOR(emotion) {
+    // ═══════════════════════════════════════════════════════════
+    // STATE-SPECIFIC BEHAVIORS
+    // ═══════════════════════════════════════════════════════════
+    
+    SWITCH emotion:
+        
+        CASE HAPPY:
+            Display.setEmotion(HAPPY)
+            
+            // Respond to interactions
+            IF headTouch.justPressed:
+                Buzzer.acknowledge()
+                lastInteractionTime = now()
+            
+            IF bodyTouch.isDoubleTap:
+                Buzzer.giggle()
+                Display.showHearts()
+                delay(1000)
+            
+            IF backTouch.justPressed:
+                Buzzer.beep()
+            
+            // Random happy behaviors
+            IF random(0, 1000) < 5:  // 0.5% chance per loop
+                Buzzer.playMelodyFor(HAPPY)
+        
+        CASE EXCITED:
+            Display.setEmotion(EXCITED)
+            
+            // High energy responses
+            IF anyTouchDetected:
+                Buzzer.playMelodyFor(EXCITED)
+            
+            // More animated display
+            Display.setAnimationSpeed(FAST)
+        
+        CASE CURIOUS:
+            Display.setEmotion(CURIOUS)
+            
+            // Track sound source (simulated - pupils move)
+            IF voiceDetected:
+                Display.lookTowards(FRONT)
+            
+            IF musicDetected:
+                Display.bobHead()  // Rhythmic movement
+            
+            // Questioning sound
+            IF lightJustChanged:
+                Buzzer.playMelodyFor(CURIOUS)
+        
+        CASE BORED:
+            Display.setEmotion(BORED)
+            
+            // Attention seeking (every 30s when bored)
+            IF boredAttentionTimer.isReady():
+                Buzzer.alert()
+                Display.lookAround()
+                boredAttentionTimer.setInterval(30000)
+                boredAttentionTimer.reset()
+        
+        CASE SLEEPY:
+            Display.setEmotion(SLEEPY)
+            
+            // Yawn periodically
+            IF sleepyYawnTimer.isReady():
+                Buzzer.yawn()
+                Display.yawnAnimation()
+                sleepyYawnTimer.setInterval(random(5000, 15000))
+                sleepyYawnTimer.reset()
+            
+            // Prepare for deep sleep
+            IF energyLevel < 20 AND timeSinceInteraction > 600000:
+                shouldEnterDeepSleep = TRUE
+        
+        CASE SCARED:
+            Display.setEmotion(SCARED)
+            
+            // Alert sounds
+            IF justEnteredState:
+                Buzzer.playMelodyFor(SCARED)
+            
+            // Wide-eyed, looking around frantically
+            Display.setAnimationSpeed(FAST)
+            Display.lookAround()
+            
+            // Calm down if comforted
+            IF headPetDetected:
+                scaredRecoveryProgress += 10
+                IF scaredRecoveryProgress >= 100:
+                    // Will transition to HAPPY next cycle
+                    Buzzer.purr()
+        
+        CASE DIZZY:
+            Display.setEmotion(DIZZY)
+            
+            IF justEnteredState:
+                Buzzer.playMelodyFor(DIZZY)
+            
+            // Swirly eyes animation handled by Display class
+            
+            // Recovery when still
+            IF isStill:
+                dizzyRecoveryTime++
+                IF dizzyRecoveryTime > 50:  // 5 seconds at 100ms updates
+                    // Will transition to HAPPY
+                    dizzyRecoveryTime = 0
+        
+        CASE ANNOYED:
+            Display.setEmotion(ANNOYED)
+            
+            IF justEnteredState:
+                Buzzer.playMelodyFor(ANNOYED)
+            
+            // Grumpy, less responsive
+            // Ignore some interactions
+            IF anyTouchDetected AND random(0, 100) < 70:
+                // 70% chance to ignore
+                RETURN
+}
+ 
+FUNCTION UPDATE_ENERGY_SYSTEM() {
+    // ═══════════════════════════════════════════════════════════
+    // ENERGY MANAGEMENT
+    // ═══════════════════════════════════════════════════════════
+    
+    IF energyDrainTimer.isReady():  // Every minute
+        IF currentEmotion != SLEEPY:
+            energyLevel -= ENERGY_DRAIN_RATE
+            
+            // Extra drain when very active
+            IF currentEmotion == EXCITED:
+                energyLevel -= 2
+            
+            energyLevel = constrain(energyLevel, 0, ENERGY_MAX)
+        ELSE:
+            // Restore energy when sleeping
+            energyLevel += 5
+            energyLevel = constrain(energyLevel, 0, ENERGY_MAX)
+        
+        energyDrainTimer.reset()
+    
+    // Influence state transitions
+    IF energyLevel < 30 AND currentEmotion != SCARED:
+        emotionBias = SLEEPY  // Bias toward sleepy state
+}
+ 
+FUNCTION CHECK_ATTENTION_SEEKING() {
+    // ═══════════════════════════════════════════════════════════
+    // AUTONOMOUS ATTENTION SEEKING BEHAVIOR
+    // ═══════════════════════════════════════════════════════════
+    
+    IF timeSinceInteraction > 180000:  // 3 minutes
+        IF attentionSeekTimer.isReady():
+            
+            // Make random noises
+            randomAction = random(0, 3)
+            
+            SWITCH randomAction:
+                CASE 0:
+                    Buzzer.beep()
+                CASE 1:
+                    Buzzer.doubleBeep()
+                CASE 2:
+                    Display.winkAnimation()
+            
+            attentionSeekTimer.setInterval(random(20000, 40000))
+            attentionSeekTimer.reset()
+}
+```
+ 
+---
+ 
+## 4. SENSOR FUSION SYSTEM
+ 
+```
+SENSOR FUSION DECISION TREE
+═══════════════════════════════════════════════════════════════
+ 
+INPUT: All sensor readings
+OUTPUT: High-level context understanding
+ 
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 1: Individual Sensor Processing                       │
+├─────────────────────────────────────────────────────────────┤
+│  LDR       → [Dark/Normal/Bright] + [Change Detection]      │
+│  Touch     → [None/Single/Multiple] + [Pattern/Hold]        │
+│  Accel     → [Still/Moving/Shake/Drop] + [Orientation]      │
+│  Mic       → [Quiet/Voice/Music/Machine/Loud]               │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 2: Pattern Recognition                                │
+├─────────────────────────────────────────────────────────────┤
+│  Combine sensors to detect complex patterns:                │
+│    • "Good Morning": Dark→Bright + PickedUp                │
+│    • "Play Time": MultiTouch + Movement + Sound            │
+│    • "Comfort": AllTouch + AfterScare + Gentle             │
+│    • "Bedtime": Dark + Quiet + GentleRock                  │
+│    • "Distress": UpsideDown + Duration > 3s                │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 3: Context Classification                             │
+├─────────────────────────────────────────────────────────────┤
+│  Priority-based evaluation:                                 │
+│    1. Safety/Emergency (Drop, VeryLoud, UpsideDown)        │
+│    2. Special Interactions (WiFiSetup, HugDetected)        │
+│    3. Environmental (Voice, Music, LightChange)            │
+│    4. Behavioral (Play, Comfort, Annoyance)                │
+│    5. Idle/Time-based (Bored, Sleepy, AttentionSeeking)    │
+└─────────────────────────────────────────────────────────────┘
+                            ↓
+┌─────────────────────────────────────────────────────────────┐
+│  STEP 4: Situation Score Calculation                        │
+├─────────────────────────────────────────────────────────────┤
+│  For each potential emotion, calculate score:               │
+│                                                              │
+│  HappyScore = (touch + movement + sound) * energy           │
+│  ExcitedScore = (rapidTouch + movement) * 2                │
+│  CuriousScore = (newSound + lightChange)                   │
+│  BoredScore = (idleTime / threshold)                       │
+│  SleepyScore = ((100 - energy) + dark + quiet) / 3        │
+│  ScaredScore = (loudNoise + drop + suddenDark) * 10       │
+│                                                              │
+│  Winner = MAX(all scores)                                   │
+└─────────────────────────────────────────────────────────────┘
+```
+ 
+---
+ 
+## 5. BEHAVIOR PATTERNS
+ 
+```
+PATTERN: Good Morning Sequence
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRIGGER:
+  • Light: Dark → Bright (change > 50%)
+  • Accel: Picked up detected
+  • Time: First interaction of the day
+  
+SEQUENCE:
+  1. Display: Stretch animation (eyes squeeze then open wide)
+  2. Buzzer: Play wake-up melody (ascending tones)
+  3. State: Transition to HAPPY
+  4. Behavior: Extra responsive for next 30 seconds
+ 
+PATTERN: Bedtime Sequence
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRIGGER:
+  • Light: Dark for > 1 minute
+  • Sound: Quiet
+  • Motion: Gentle rocking OR completely still
+  • Energy: < 50%
+  
+SEQUENCE:
+  1. State: Transition to SLEEPY (if not already)
+  2. Display: Yawn animation (repeat 2-3 times)
+  3. Buzzer: Play lullaby (descending soft tones)
+  4. After 2 minutes of conditions: Enter DEEP SLEEP
+ 
+PATTERN: Affection Response
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRIGGER:
+  • Touch: Head held (long press)
+  • Sound: Soft voice detected
+  • Motion: Still OR gentle movement
+  
+SEQUENCE:
+  1. Display: Show heart eyes / heart animation
+  2. Buzzer: Purring sound (low frequency vibration)
+  3. Duration: Continue as long as condition persists
+  4. Energy: Restore +10 points
+ 
+PATTERN: Play Mode
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRIGGER:
+  • Touch: 5+ touches within 2 seconds
+  • Motion: Movement detected with touches
+  • OR: Music detected
+  
+SEQUENCE:
+  1. State: Transition to EXCITED
+  2. Display: Rapid eye animations, looking around
+  3. Buzzer: Playful melody
+  4. Behavior: Very responsive to all inputs
+  5. Duration: Stay excited for 1 minute or until calm
+ 
+PATTERN: Comfort After Scare
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRIGGER:
+  • Current State: SCARED
+  • Touch: All three sensors held
+  • OR: Head long press
+  • Motion: Gentle/still
+  
+SEQUENCE:
+  1. Display: Eyes gradually calm (wide → normal)
+  2. Buzzer: Calming tones (transition from alert to purr)
+  3. State: SCARED → HAPPY (gradual, 3-5 seconds)
+  4. Response: Acknowledge comfort with happy beep
+ 
+PATTERN: Dizzy Recovery
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRIGGER:
+  • Current State: DIZZY
+  • Motion: Still for > 3 seconds
+  
+SEQUENCE:
+  1. Display: Swirly eyes gradually stabilize
+  2. Buzzer: Wobbly sound → normal beep
+  3. State: DIZZY → HAPPY
+  4. Display: Blink twice (like clearing head)
+ 
+PATTERN: Attention Seeking (Bored)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+TRIGGER:
+  • Idle time: > 3 minutes
+  • Light: Not dark (not sleeping time)
+  • State: BORED
+  
+SEQUENCE (repeats every 20-40 seconds):
+  1. Buzzer: Random sound effect
+     • 40% chance: Single beep
+     • 30% chance: Double beep  
+     • 30% chance: Short melody
+  2. Display: Random eye animation
+     • Look left
+     • Look right
+     • Wink
+     • Wide eyes
+  3. Continue until interaction received
+```
+ 
+---
+ 
+## 6. WIFI SETUP FLOW
+ 
+```
+WIFI CONFIGURATION COMPLETE FLOW
+═══════════════════════════════════════════════════════════════
+ 
+FUNCTION WIFI_SETUP_SEQUENCE() {
+    // ═══════════════════════════════════════════════════════════
+    // TRIGGERED BY: Touch Pattern (Head×3 + Body×2)
+    // ═══════════════════════════════════════════════════════════
+    
+    STEP 1: Acknowledge Pattern
+    ┌───────────────────────────────────────────────────────────┐
+    │ Buzzer.playMelodyFor(CURIOUS)                             │
+    │ Display.showMessage("WiFi Setup")                         │
+    │ delay(1000)                                                │
+    └───────────────────────────────────────────────────────────┘
+    
+    STEP 2: Start Access Point
+    ┌───────────────────────────────────────────────────────────┐
+    │ WiFiManager.startAP()                                     │
+    │   ├─ WiFi.mode(WIFI_AP)                                   │
+    │   ├─ WiFi.softAP("RobotSetup", "", channel 6)            │
+    │   ├─ Start DNS server (port 53, captive portal)          │
+    │   └─ Start web server (port 80)                           │
+    │                                                            │
+    │ Display.showMessage("AP Started")                         │
+    │ Buzzer.doubleBeep()                                       │
+    └───────────────────────────────────────────────────────────┘
+    
+    STEP 3: Show QR Code / Connection Info
+    ┌───────────────────────────────────────────────────────────┐
+    │ Display.showQRCode("http://192.168.4.1")                  │
+    │                                                            │
+    │ Shows on OLED:                                            │
+    │  ┌──────────────────┐                                     │
+    │  │ Scan to connect: │                                     │
+    │  │                  │                                     │
+    │  │ WiFi: RobotSetup│                                     │
+    │  │ (No password)    │                                     │
+    │  │                  │                                     │
+    │  │ Then visit:      │                                     │
+    │  │ 192.168.4.1      │                                     │
+    │  └──────────────────┘                                     │
+    └───────────────────────────────────────────────────────────┘
+    
+    STEP 4: User Connects (On Phone)
+    ┌───────────────────────────────────────────────────────────┐
+    │ USER ACTION:                                              │
+    │  1. Connect phone WiFi to "RobotSetup"                   │
+    │  2. Captive portal auto-opens OR manually visit IP       │
+    │  3. Beautiful web page loads (gradient purple background)│
+    └───────────────────────────────────────────────────────────┘
+    
+    STEP 5: Web Interface Interaction
+    ┌───────────────────────────────────────────────────────────┐
+    │ WEB PAGE:                                                 │
+    │  ┌─────────────────────────────────────────────┐         │
+    │  │  🤖 Robot WiFi Setup                        │         │
+    │  │                                              │         │
+    │  │  WiFi Network: [Dropdown - Scanning...]     │         │
+    │  │                ↓ (auto-populated)            │         │
+    │  │                [MyHomeNetwork ▼]             │         │
+    │  │                [OfficeWiFi]                  │         │
+    │  │                [CoffeeShop5G]                │         │
+    │  │                                              │         │
+    │  │  Password:     [••••••••••••]               │         │
+    │  │                                              │         │
+    │  │         [Connect Robot]                      │         │
+    │  └─────────────────────────────────────────────┘         │
+    │                                                            │
+    │ ROBOT BEHAVIOR:                                           │
+    │  • Eyes show "waiting" animation                          │
+    │  • Occasional curious beeps                               │
+    └───────────────────────────────────────────────────────────┘
+    
+    STEP 6: Form Submission Handler
+    ┌───────────────────────────────────────────────────────────┐
+    │ ON FORM SUBMIT:                                           │
+    │                                                            │
+    │ JavaScript sends POST to /connect:                        │
+    │ {                                                          │
+    │   "ssid": "MyHomeNetwork",                                │
+    │   "password": "mypassword123"                             │
+    │ }                                                          │
+    │                                                            │
+    │ ROBOT RECEIVES:                                           │
+    │  1. Save credentials to Preferences                       │
+    │  2. Display.showMessage("Connecting...")                  │
+    │  3. Buzzer.acknowledge()                                  │
+    │  4. Attempt WiFi connection (15s timeout)                 │
+    └───────────────────────────────────────────────────────────┘
+    
+    STEP 7A: Connection Successful
+    ┌───────────────────────────────────────────────────────────┐
+    │ IF WiFi.status() == WL_CONNECTED:                         │
+    │                                                            │
+    │  1. Send JSON response:                                   │
+    │     {"success": true}                                     │
+    │                                                            │
+    │  2. Display.showMessage("Connected! ✓")                  │
+    │  3. Buzzer.playMelodyFor(HAPPY)                          │
+    │  4. Display.showHappyEyes()                              │
+    │                                                            │
+    │  5. Sync time from NTP:                                   │
+    │     configTime(GMT_OFFSET, DST_OFFSET, "pool.ntp.org")   │
+    │                                                            │
+    │  6. delay(2000)                                           │
+    │  7. WiFiManager.stopAP()                                 │
+    │  8. Return to normal operation (HAPPY state)             │
+    │  9. Clock feature now enabled                             │
+    └───────────────────────────────────────────────────────────┘
+    
+    STEP 7B: Connection Failed
+    ┌───────────────────────────────────────────────────────────┐
+    │ IF connection timeout OR wrong password:                  │
+    │                                                            │
+    │  1. Send JSON response:                                   │
+    │     {"success": false, "message": "Could not connect"}   │
+    │                                                            │
+    │  2. Display.showMessage("Failed ✗")                      │
+    │  3. Buzzer.playMelodyFor(ANNOYED)                        │
+    │  4. Display.showSadEyes()                                │
+    │                                                            │
+    │  5. Stay in AP mode                                       │
+    │  6. Wait for user to try again                            │
+    └───────────────────────────────────────────────────────────┘
+    
+    STEP 8: Exit AP Mode
+    ┌───────────────────────────────────────────────────────────┐
+    │ User can also exit AP mode by:                           │
+    │  • Touch pattern again (cancels setup)                    │
+    │  • Wait 5 minutes (auto-timeout)                          │
+    │                                                            │
+    │ ON EXIT:                                                   │
+    │  WiFiManager.stopAP()                                     │
+    │  Return to normal operation                               │
+    │  Display normal eyes                                       │
+    └───────────────────────────────────────────────────────────┘
+}
+ 
+NORMAL OPERATION WITH WIFI
+═══════════════════════════════════════════════════════════════
+ 
+WHEN WiFi Connected:
+┌───────────────────────────────────────────────────────────────┐
+│ ADDITIONAL FEATURES:                                          │
+│                                                                │
+│ 1. Clock Display                                              │
+│    IF idle > 2 minutes AND still on table:                   │
+│      Display.showClock()                                      │
+│      ┌──────────────┐                                         │
+│      │   14:32      │ ← Large time                          │
+│      │              │                                         │
+│      │  05/23/2026  │ ← Date                                │
+│      └──────────────┘                                         │
+│                                                                │
+│ 2. Time-Based Behaviors (Future Enhancement)                  │
+│    • Greet differently based on time of day                   │
+│    • Remind about bedtime                                     │
+│    • Weekend vs weekday awareness                             │
+│                                                                │
+│ 3. Weather Integration (Future Enhancement)                   │
+│    • Fetch weather, show on display                           │
+│    • React to weather conditions                              │
+└───────────────────────────────────────────────────────────────┘
+ 
+WHEN WiFi NOT Connected:
+┌───────────────────────────────────────────────────────────────┐
+│ • All core behaviors work normally                            │
+│ • Clock feature disabled                                      │
+│ • Show eyes instead of time when idle                         │
+│ • User can trigger WiFi setup anytime with pattern            │
+└───────────────────────────────────────────────────────────────┘
+```
+ 
+---
+ 
+## 7. DEEP SLEEP LOGIC
+ 
+```
+DEEP SLEEP SYSTEM
+═══════════════════════════════════════════════════════════════
+ 
+FUNCTION shouldEnterDeepSleep() → BOOLEAN {
+    // ═══════════════════════════════════════════════════════════
+    // CRITERIA FOR DEEP SLEEP
+    // ═══════════════════════════════════════════════════════════
+    
+    CHECK 1: Time-Based
+    ┌───────────────────────────────────────────────────────────┐
+    │ IF timeSinceInteraction > 30 minutes:                     │
+    │   criteriaCount++                                          │
+    └───────────────────────────────────────────────────────────┘
+    
+    CHECK 2: Environment-Based
+    ┌───────────────────────────────────────────────────────────┐
+    │ IF LDR.isCurrentlyDark() for > 5 minutes:                │
+    │   criteriaCount++                                          │
+    └───────────────────────────────────────────────────────────┘
+    
+    CHECK 3: Energy-Based
+    ┌───────────────────────────────────────────────────────────┐
+    │ IF energyLevel < 20:                                      │
+    │   criteriaCount++                                          │
+    └───────────────────────────────────────────────────────────┘
+    
+    CHECK 4: State-Based
+    ┌───────────────────────────────────────────────────────────┐
+    │ IF currentEmotion == SLEEPY:                              │
+    │   criteriaCount++                                          │
+    └───────────────────────────────────────────────────────────┘
+    
+    CHECK 5: Motion-Based
+    ┌───────────────────────────────────────────────────────────┐
+    │ IF AccelSensor.getTimeSinceMovement() > 20 minutes:      │
+    │   criteriaCount++                                          │
+    └───────────────────────────────────────────────────────────┘
+    
+    DECISION:
+    ┌───────────────────────────────────────────────────────────┐
+    │ IF criteriaCount >= 3:                                    │
+    │   RETURN TRUE  // Enter deep sleep                        │
+    │ ELSE:                                                      │
+    │   RETURN FALSE // Stay awake                              │
+    └───────────────────────────────────────────────────────────┘
+}
+ 
+FUNCTION ENTER_DEEP_SLEEP() {
+    // ═══════════════════════════════════════════════════════════
+    // DEEP SLEEP PREPARATION AND EXECUTION
+    // ═══════════════════════════════════════════════════════════
+    
+    PHASE 1: Pre-Sleep Sequence
+    ┌───────────────────────────────────────────────────────────┐
+    │ 1. Display.showMessage("Going to sleep...")              │
+    │ 2. Buzzer.yawn()                                          │
+    │ 3. Display.setEmotion(SLEEPY)                            │
+    │ 4. delay(2000)                                            │
+    │                                                            │
+    │ 5. Gradual eye closing animation:                         │
+    │    FOR i = 0 TO 10:                                       │
+    │      Display.partialBlink(i * 10%)                       │
+    │      delay(200)                                           │
+    └───────────────────────────────────────────────────────────┘
+    
+    PHASE 2: Save State
+    ┌───────────────────────────────────────────────────────────┐
+    │ Preferences.begin("robot", false)                         │
+    │ Preferences.putInt("lastEmotion", currentEmotion)         │
+    │ Preferences.putInt("energyLevel", energyLevel)            │
+    │ Preferences.putULong("sleepTime", millis())              │
+    │ Preferences.end()                                          │
+    └───────────────────────────────────────────────────────────┘
+    
+    PHASE 3: Configure Wake-Up Sources
+    ┌───────────────────────────────────────────────────────────┐
+    │ // Wake on touch (any touch sensor)                       │
+    │ esp_sleep_enable_touchpad_wakeup()                        │
+    │ touchSleepWakeUpEnable(TOUCH_HEAD_PIN, TOUCH_THRESHOLD)  │
+    │ touchSleepWakeUpEnable(TOUCH_BODY_PIN, TOUCH_THRESHOLD)  │
+    │ touchSleepWakeUpEnable(TOUCH_BACK_PIN, TOUCH_THRESHOLD)  │
+    │                                                            │
+    │ // Wake on timer (every 8 hours to check status)         │
+    │ esp_sleep_enable_timer_wakeup(8 * 60 * 60 * 1000000ULL) │
+    │                                                            │
+    │ // Wake on GPIO (accelerometer interrupt - if configured) │
+    │ IF ACCEL_INT_PIN defined:                                 │
+    │   esp_sleep_enable_ext0_wakeup(ACCEL_INT_PIN, LOW)      │
+    └───────────────────────────────────────────────────────────┘
+    
+    PHASE 4: Shutdown Peripherals
+    ┌───────────────────────────────────────────────────────────┐
+    │ Display.clear()                                            │
+    │ Display.powerOff()                                        │
+    │ Buzzer.stop()                                             │
+    │ WiFi.disconnect(true)                                     │
+    │ WiFi.mode(WIFI_OFF)                                       │
+    │ btStop()  // Disable Bluetooth                            │
+    │                                                            │
+    │ // Disable I2S (microphone)                               │
+    │ i2s_driver_uninstall(I2S_NUM_0)                          │
+    └───────────────────────────────────────────────────────────┘
+    
+    PHASE 5: Enter Deep Sleep
+    ┌───────────────────────────────────────────────────────────┐
+    │ Serial.println("💤 Entering deep sleep...")             │
+    │ Serial.flush()  // Ensure message is sent                │
+    │ delay(100)                                                 │
+    │                                                            │
+    │ esp_deep_sleep_start()                                    │
+    │                                                            │
+    │ // ← Execution stops here                                │
+    │ // ← Robot powered down to minimal current               │
+    │ // ← Waiting for wake-up event...                        │
+    └───────────────────────────────────────────────────────────┘
+}
+ 
+FUNCTION WAKE_UP_FROM_DEEP_SLEEP() {
+    // ═══════════════════════════════════════════════════════════
+    // CALLED AUTOMATICALLY ON WAKE (in setup())
+    // ═══════════════════════════════════════════════════════════
+    
+    STEP 1: Determine Wake Cause
+    ┌───────────────────────────────────────────────────────────┐
+    │ esp_sleep_wakeup_cause_t wakeup_reason                    │
+    │ wakeup_reason = esp_sleep_get_wakeup_cause()             │
+    │                                                            │
+    │ SWITCH wakeup_reason:                                     │
+    │   CASE ESP_SLEEP_WAKEUP_TOUCHPAD:                        │
+    │     wakeReason = "Touch detected"                         │
+    │     wakeAnimation = HAPPY_WAKE                            │
+    │                                                            │
+    │   CASE ESP_SLEEP_WAKEUP_EXT0:                            │
+    │     wakeReason = "Movement detected"                      │
+    │     wakeAnimation = SURPRISED_WAKE                        │
+    │                                                            │
+    │   CASE ESP_SLEEP_WAKEUP_TIMER:                           │
+    │     wakeReason = "Timer wake"                             │
+    │     wakeAnimation = SLEEPY_WAKE                           │
+    │                                                            │
+    │   DEFAULT:                                                 │
+    │     wakeReason = "Power on"                               │
+    │     wakeAnimation = STARTUP                                │
+    └───────────────────────────────────────────────────────────┘
+    
+    STEP 2: Restore State
+    ┌───────────────────────────────────────────────────────────┐
+    │ Preferences.begin("robot", true)                          │
+    │ lastEmotion = Preferences.getInt("lastEmotion", HAPPY)    │
+    │ energyLevel = Preferences.getInt("energyLevel", 100)      │
+    │ sleepTime = Preferences.getULong("sleepTime", 0)         │
+    │ Preferences.end()                                          │
+    │                                                            │
+    │ // Calculate sleep duration                               │
+    │ sleepDuration = (millis() - sleepTime) / 1000 // seconds │
+    │                                                            │
+    │ // Restore energy based on sleep duration                 │
+    │ energyRestored = sleepDuration / 60  // 1 per minute     │
+    │ energyLevel += energyRestored                             │
+    │ energyLevel = constrain(energyLevel, 0, 100)             │
+    └───────────────────────────────────────────────────────────┘
+    
+    STEP 3: Wake-Up Sequence
+    ┌───────────────────────────────────────────────────────────┐
+    │ 1. Display.powerOn()                                      │
+    │ 2. Display.begin()                                        │
+    │                                                            │
+    │ 3. Play wake animation based on wake reason:              │
+    │    IF wakeAnimation == HAPPY_WAKE:                        │
+    │      Display.stretchAnimation()                           │
+    │      Buzzer.startupSound()                                │
+    │      currentEmotion = HAPPY                                │
+    │                                                            │
+    │    ELSE IF wakeAnimation == SURPRISED_WAKE:               │
+    │      Display.wideEyes()                                   │
+    │      Buzzer.questionTone()                                │
+    │      currentEmotion = CURIOUS                             │
+    │                                                            │
+    │    ELSE IF wakeAnimation == SLEEPY_WAKE:                  │
+    │      Display.slowWake()                                   │
+    │      Buzzer.yawn()                                        │
+    │      currentEmotion = SLEEPY                              │
+    │      // May go back to sleep if conditions still met      │
+    └───────────────────────────────────────────────────────────┘
+    
+    STEP 4: Resume Normal Operation
+    ┌───────────────────────────────────────────────────────────┐
+    │ // Re-initialize sensors                                  │
+    │ AccelSensor.begin()                                       │
+    │ MicSensor.begin()                                         │
+    │                                                            │
+    │ // Reconnect WiFi if was previously connected             │
+    │ IF WiFi credentials saved:                                │
+    │   WiFiManager.connectToWiFi()                            │
+    │                                                            │
+    │ // Reset interaction timer                                │
+    │ lastInteractionTime = millis()                            │
+    │                                                            │
+    │ // Continue with main loop                                │
+    │ Serial.println("☀️ Awake and ready!")                    │
+    └───────────────────────────────────────────────────────────┘
+}
+ 
+POWER CONSUMPTION ESTIMATES
+═══════════════════════════════════════════════════════════════
+ 
+Active Mode (All systems on):
+  • ESP32: ~160mA
+  • OLED Display: ~20mA
+  • MPU6050: ~3.5mA
+  • I2S Mic: ~1mA
+  • Total: ~185mA
+  • Battery life (2000mAh): ~10.8 hours
+ 
+Light Sleep (Display off, sensors low power):
+  • ESP32: ~2-3mA
+  • Sensors: ~0.5mA
+  • Total: ~3.5mA
+  • Battery life: ~570 hours (23 days)
+ 
+Deep Sleep (Only wake circuitry active):
+  • ESP32: ~10μA
+  • Touch pads: ~10μA per pad
+  • Total: ~40μA
+  • Battery life: ~5 years (theoretical)
+```
+ 
+---
+ 
+## COMPLETE MAIN PROGRAM PSEUDO CODE
+ 
+```cpp
+// ═══════════════════════════════════════════════════════════════
+// MAIN PROGRAM - ESP32_DeskRobot.ino
+// ═══════════════════════════════════════════════════════════════
+ 
+#include "Config.h"
+#include "Timer.h"
+#include "LDRSensor.h"
+#include "TouchSensor.h"
+#include "AccelSensor.h"
+#include "MicSensor.h"
+#include "Display.h"
+#include "Buzzer.h"
+#include "WiFiManager.h"
+ 
+// Global objects
+LDRSensor ldr(LDR_PIN);
+TouchSensor touch;
+AccelSensor accel;
+MicSensor mic;
+Display display;
+Buzzer buzzer(BUZZER_PIN, BUZZER_CHANNEL);
+WiFiManager wifiMgr;
+ 
+// Timers
+Timer sensorTimer(SENSOR_READ_INTERVAL);
+Timer displayTimer(DISPLAY_UPDATE_INTERVAL);
+Timer behaviorTimer(BEHAVIOR_UPDATE_INTERVAL);
+Timer clockTimer(CLOCK_UPDATE_INTERVAL);
+Timer soundTimer(SOUND_ANALYSIS_INTERVAL);
+Timer energyTimer(60000);  // 1 minute
+Timer attentionTimer(30000);  // 30 seconds
+Timer stateTransitionCooldown(STATE_TRANSITION_COOLDOWN);
+ 
+// State variables
+EmotionState currentEmotion = HAPPY;
+EmotionState previousEmotion = HAPPY;
+int energyLevel = 100;
+unsigned long lastInteractionTime = 0;
+bool justEnteredState = false;
+bool shouldEnterDeepSleep = false;
+ 
+void setup() {
+    Serial.begin(115200);
+    Serial.println("🤖 ESP32 Desk Robot Starting...");
+    
+    // Check if waking from deep sleep
+    esp_sleep_wakeup_cause_t wakeup_reason = esp_sleep_get_wakeup_cause();
+    if (wakeup_reason != ESP_SLEEP_WAKEUP_UNDEFINED) {
+        handleWakeUp(wakeup_reason);
+    }
+    
+    // Initialize sensors
+    ldr.begin();
+    touch.begin();
+    if (!accel.begin()) {
+        Serial.println("⚠️  Accelerometer failed!");
+    }
+    mic.begin();
+    
+    // Initialize outputs
+    display.begin();
+    buzzer.begin();
+    
+    // Show startup animation
+    display.setEmotion(HAPPY);
+    buzzer.startupSound();
+    
+    // Initialize WiFi
+    wifiMgr.begin();
+    
+    // If WiFi connected, sync time
+    if (wifiMgr.isConnected()) {
+        configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+    }
+    
+    Serial.println("✓ Robot Ready!");
+    lastInteractionTime = millis();
+}
+ 
+void loop() {
+    // STEP 1: Update all sensors
+    if (sensorTimer.isReady()) {
+        ldr.update();
+        touch.update();
+        accel.update();
+        
+        // Pass movement info to touch for hold detection
+        touch.setMovementDetected(accel.isMoving());
+    }
+    
+    if (soundTimer.isReady()) {
+        mic.update();
+    }
+    
+    // STEP 2: Check priority events
+    if (handlePriorityEvents()) {
+        return;  // Priority event handled, skip normal processing
+    }
+    
+    // STEP 3: Process sensor fusion and update state
+    if (behaviorTimer.isReady()) {
+        ContextData context = analyzeContext();
+        EmotionState newEmotion = evaluateEmotion(context);
+        
+        if (newEmotion != currentEmotion && stateTransitionCooldown.elapsed() > STATE_TRANSITION_COOLDOWN) {
+            transitionToState(newEmotion);
+            stateTransitionCooldown.reset();
+        }
+        
+        updateAutonomousBehaviors(context);
+    }
+    
+    // STEP 4: Execute current state behavior
+    executeStateBehavior();
+    
+    // STEP 5: Update outputs
+    if (displayTimer.isReady()) {
+        if (wifiMgr.isConnected() && millis() - lastInteractionTime > 120000) {
+            display.showClock(true);
+            display.updateClock();
+        } else {
+            display.showClock(false);
+            display.update();
+        }
+    }
+    
+    buzzer.update();  // Continue playing melodies
+    
+    // STEP 6: WiFi tasks
+    wifiMgr.update();
+    
+    // STEP 7: Check deep sleep
+    if (shouldEnterDeepSleep && checkDeepSleepCriteria()) {
+        enterDeepSleep();
+    }
+    
+    delay(1);  // Stability delay
+}
+ 
+// Additional helper functions continue...
+```
+ 
+This comprehensive pseudo code provides the complete blueprint for implementing the ESP32 desk robot with all requested features!
